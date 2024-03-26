@@ -104,14 +104,14 @@ def start_faas(port: int = 8000, workers: int = 1):
     StandaloneApplication(app, options).run()
 
 
-def start_fass_with_cmd(workers: int = 1):
+def start_fass_with_cmd(port: int = 8000, workers: int = 1):
     gunicorn_cmd = (
         f"poetry run gunicorn "
         "pyfunvice:app "
         f"--timeout 7200 "
         f"--workers {workers} "
         "--worker-class uvicorn.workers.UvicornWorker "
-        "--bind 0.0.0.0:8000"
+        f"--bind 0.0.0.0:{port}"
     )
     result = subprocess.run(gunicorn_cmd, shell=True, check=True, text=True)
     print(result)
