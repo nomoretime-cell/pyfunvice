@@ -1,44 +1,86 @@
+from fastapi.params import Form
 from gunicorn.app.base import BaseApplication
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, File, Request, UploadFile
 from functools import wraps
 import inspect
 import subprocess
+import aiofiles
 
+from pyfunvice.common_func import delete_file, get_uuid
 from pyfunvice.struct import ResponseModel
 
 app = FastAPI()
 faas_router = APIRouter()
 
 
-def faas(path="/"):
+def faas(path="/", body_type="raw"):
     def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
+        if body_type == "raw":
 
-        signature = inspect.signature(func)
-        parameters = list(signature.parameters.values())
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                return await func(*args, **kwargs)
 
-        @faas_router.post(path)
-        async def process_function(request: Request):
-            try:
-                data = await request.json()
-                args = [data.get(param.name) for param in parameters]
-                result = await wrapper(*args)
-                return ResponseModel(
-                    requestId=data.get("requestId"),
-                    code="200",
-                    message="success",
-                    data=result,
-                )
-            except Exception as e:
-                return ResponseModel(
-                    requestId=data.get("requestId"),
-                    code="500",
-                    message=str(e),
-                    data={},
-                )
+            signature = inspect.signature(func)
+            parameters = list(signature.parameters.values())
 
+            @faas_router.post(path)
+            async def process_function(request: Request):
+                try:
+                    data = await request.json()
+                    args = [data.get(param.name) for param in parameters]
+                    result = await wrapper(*args)
+                    return ResponseModel(
+                        requestId=data.get("requestId"),
+                        code="200",
+                        message="success",
+                        data=result,
+                    )
+                except Exception as e:
+                    return ResponseModel(
+                        requestId=data.get("requestId"),
+                        code="500",
+                        message=str(e),
+                        data={},
+                    )
+        elif body_type == "form-data":
+
+            @wraps(func)
+            async def wrapper(file_name: str, file: UploadFile = File(...)):
+                async with aiofiles.open(file_name, "wb") as out_file:
+                    content = await file.read()
+                    await out_file.write(content)
+                result = await func(file_name)
+                delete_file(file_name)
+                return result
+
+            @faas_router.post(path)
+            async def process_function(
+                file: UploadFile = File(...),
+                requestId: str = Form(...),
+            ):
+                try:
+                    if not file:
+                        raise Exception("file is empty")
+                    if requestId is None or len(requestId) == 0:
+                        requestId = get_uuid()
+                    file_name: str = requestId
+                    result = await wrapper(file_name, file)
+                    return ResponseModel(
+                        requestId=requestId,
+                        code="200",
+                        message="success",
+                        data=result,
+                    )
+                except Exception as e:
+                    return ResponseModel(
+                        requestId=requestId,
+                        code="500",
+                        message=str(e),
+                        data={},
+                    )
+        else:
+            pass
         return func
 
     return decorator
@@ -48,7 +90,7 @@ def faas_with_dict_req(path="/"):
     def decorator(func):
         @wraps(func)
         async def wrapper(data: dict):
-            return func(data)
+            return await func(data)
 
         @faas_router.post(path)
         async def process_function(request: Request):
