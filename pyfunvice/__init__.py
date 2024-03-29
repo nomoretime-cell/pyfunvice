@@ -13,36 +13,71 @@ app = FastAPI()
 faas_router = APIRouter()
 
 
-def faas(path="/", body_type="raw"):
+def faas(path="/", body_type="raw", inparam_type="dict"):
+    """
+    path : str = "/",                       # http path
+    body_type : str = "raw", "form-data"    # http body type
+    inparam_type : str = "dict", "flat"     # faas inparam type
+    """
+
     def decorator(func):
         if body_type == "raw":
+            if inparam_type == "dict":
 
-            @wraps(func)
-            async def wrapper(*args, **kwargs):
-                return await func(*args, **kwargs)
+                @wraps(func)
+                async def wrapper(data: dict):
+                    return await func(data)
 
-            signature = inspect.signature(func)
-            parameters = list(signature.parameters.values())
+                @faas_router.post(path)
+                async def process_function(request: Request):
+                    try:
+                        data = await request.json()
+                        result = await wrapper(data)
+                        return ResponseModel(
+                            requestId=data.get("requestId"),
+                            code="200",
+                            message="success",
+                            data=result,
+                        )
+                    except Exception as e:
+                        return ResponseModel(
+                            requestId=data.get("requestId"),
+                            code="500",
+                            message=str(e),
+                            data={},
+                        )
 
-            @faas_router.post(path)
-            async def process_function(request: Request):
-                try:
-                    data = await request.json()
-                    args = [data.get(param.name) for param in parameters]
-                    result = await wrapper(*args)
-                    return ResponseModel(
-                        requestId=data.get("requestId"),
-                        code="200",
-                        message="success",
-                        data=result,
-                    )
-                except Exception as e:
-                    return ResponseModel(
-                        requestId=data.get("requestId"),
-                        code="500",
-                        message=str(e),
-                        data={},
-                    )
+                return func
+            elif inparam_type == "flat":
+
+                @wraps(func)
+                async def wrapper(*args, **kwargs):
+                    return await func(*args, **kwargs)
+
+                signature = inspect.signature(func)
+                parameters = list(signature.parameters.values())
+
+                @faas_router.post(path)
+                async def process_function(request: Request):
+                    try:
+                        data = await request.json()
+                        args = [data.get(param.name) for param in parameters]
+                        result = await wrapper(*args)
+                        return ResponseModel(
+                            requestId=data.get("requestId"),
+                            code="200",
+                            message="success",
+                            data=result,
+                        )
+                    except Exception as e:
+                        return ResponseModel(
+                            requestId=data.get("requestId"),
+                            code="500",
+                            message=str(e),
+                            data={},
+                        )
+            else:
+                pass
         elif body_type == "form-data":
 
             @wraps(func)
@@ -81,36 +116,6 @@ def faas(path="/", body_type="raw"):
                     )
         else:
             pass
-        return func
-
-    return decorator
-
-
-def faas_with_dict_req(path="/"):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(data: dict):
-            return await func(data)
-
-        @faas_router.post(path)
-        async def process_function(request: Request):
-            try:
-                data = await request.json()
-                result = await wrapper(data)
-                return ResponseModel(
-                    requestId=data.get("requestId"),
-                    code="200",
-                    message="success",
-                    data=result,
-                )
-            except Exception as e:
-                return ResponseModel(
-                    requestId=data.get("requestId"),
-                    code="500",
-                    message=str(e),
-                    data={},
-                )
-
         return func
 
     return decorator
