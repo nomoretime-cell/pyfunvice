@@ -92,7 +92,7 @@ def faas(path="/", body_type="raw", inparam_type="dict"):
             @faas_router.post(path)
             async def process_function(
                 file: UploadFile = File(...),
-                requestId: str = Form(...),
+                requestId: str = Form(None),
             ):
                 try:
                     if not file:
