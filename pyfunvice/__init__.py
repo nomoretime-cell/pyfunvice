@@ -5,9 +5,7 @@ from fastapi import APIRouter, FastAPI, File, Request, UploadFile
 from fastapi.params import Form
 from functools import wraps
 import inspect
-import subprocess
 import aiofiles
-import uvicorn
 
 from pyfunvice.common_func import delete_file, get_uuid
 from pyfunvice.struct import ResponseModel
@@ -16,7 +14,7 @@ app = FastAPI()
 faas_router = APIRouter()
 
 
-def faas(path="/", body_type="raw", inparam_type="dict"):
+def app_service(path="/", body_type="raw", inparam_type="dict"):
     """
     path : str = "/",                       # http path
     body_type : str = "raw", "form-data"    # http body type
@@ -50,7 +48,6 @@ def faas(path="/", body_type="raw", inparam_type="dict"):
                             data={},
                         )
 
-                return func
             elif inparam_type == "flat":
 
                 @wraps(func)
@@ -81,6 +78,7 @@ def faas(path="/", body_type="raw", inparam_type="dict"):
                         )
             else:
                 pass
+            return func
         elif body_type == "form-data":
 
             @wraps(func)
@@ -143,11 +141,14 @@ class StandaloneApplication(BaseApplication):
         return self.application
 
 
-def start_faas(port: int = 8000, workers: int = 1, post_fork_func: callable = None):
+def start_app(port: int = 8000, workers: int = 1, post_fork_func: callable = None):
     app.include_router(faas_router)
 
     def post_fork(server: Arbiter, worker: Worker):
-        post_fork_func()
+        if post_fork_func is not None:
+            post_fork_func()
+        else:
+            pass
 
     options = {
         "bind": f"0.0.0.0:{port}",
@@ -159,27 +160,8 @@ def start_faas(port: int = 8000, workers: int = 1, post_fork_func: callable = No
     StandaloneApplication(app, options).run()
 
 
-def start_fass_with_uvicorn(port: int = 8000, workers: int = 1):
+def get_app_instance(post_fork_func: callable = None):
+    if post_fork_func is not None:
+        post_fork_func()
     app.include_router(faas_router)
-
-    uvicorn.run(
-        "pyfunvice:app",
-        host="0.0.0.0",
-        port=port,
-        workers=workers,
-    )
-
-
-def start_fass_with_cmd(port: int = 8000, workers: int = 1):
-    app.include_router(faas_router)
-
-    gunicorn_cmd = (
-        f"poetry run gunicorn "
-        "pyfunvice:app "
-        f"--timeout 7200 "
-        f"--workers {workers} "
-        "--worker-class uvicorn.workers.UvicornWorker "
-        f"--bind 0.0.0.0:{port}"
-    )
-    result = subprocess.run(gunicorn_cmd, shell=True, check=True, text=True)
-    print(result)
+    return app
