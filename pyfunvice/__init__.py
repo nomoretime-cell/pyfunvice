@@ -1,10 +1,13 @@
-from fastapi.params import Form
 from gunicorn.app.base import BaseApplication
+from gunicorn.arbiter import Arbiter
+from gunicorn.workers.base import Worker
 from fastapi import APIRouter, FastAPI, File, Request, UploadFile
+from fastapi.params import Form
 from functools import wraps
 import inspect
 import subprocess
 import aiofiles
+import uvicorn
 
 from pyfunvice.common_func import delete_file, get_uuid
 from pyfunvice.struct import ResponseModel
@@ -140,18 +143,36 @@ class StandaloneApplication(BaseApplication):
         return self.application
 
 
-def start_faas(port: int = 8000, workers: int = 1):
+def start_faas(port: int = 8000, workers: int = 1, post_fork_func: callable = None):
     app.include_router(faas_router)
+
+    def post_fork(server: Arbiter, worker: Worker):
+        post_fork_func()
+
     options = {
         "bind": f"0.0.0.0:{port}",
         "timeout": 7200,
         "workers": workers,
         "worker_class": "uvicorn.workers.UvicornWorker",
+        "post_fork": post_fork,
     }
     StandaloneApplication(app, options).run()
 
 
+def start_fass_with_uvicorn(port: int = 8000, workers: int = 1):
+    app.include_router(faas_router)
+
+    uvicorn.run(
+        "pyfunvice:app",
+        host="0.0.0.0",
+        port=port,
+        workers=workers,
+    )
+
+
 def start_fass_with_cmd(port: int = 8000, workers: int = 1):
+    app.include_router(faas_router)
+
     gunicorn_cmd = (
         f"poetry run gunicorn "
         "pyfunvice:app "
