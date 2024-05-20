@@ -7,7 +7,7 @@ from functools import wraps
 import inspect
 import aiofiles
 
-from pyfunvice.common_func import delete_file, get_uuid
+from pyfunvice.common_func import delete_file
 from pyfunvice.struct import ResponseModel
 
 app = FastAPI()
@@ -98,8 +98,6 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                 try:
                     if not file:
                         raise Exception("file is empty")
-                    if requestId is None or len(requestId) == 0:
-                        requestId = get_uuid()
                     file_name: str = requestId
                     result = await wrapper(file_name, file)
                     return ResponseModel(
