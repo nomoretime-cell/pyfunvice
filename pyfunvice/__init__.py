@@ -6,12 +6,17 @@ from fastapi.params import Form
 from functools import wraps
 import inspect
 import aiofiles
+import logging
 
 from pyfunvice.common_func import delete_file
 from pyfunvice.struct import ResponseModel
 
 app = FastAPI()
 faas_router = APIRouter()
+
+logging.basicConfig(
+    level=logging.INFO, format="[%(asctime)s] [%(thread)d] [%(levelname)s] %(message)s"
+)
 
 
 def app_service(path="/", body_type="raw", inparam_type="dict"):
@@ -41,6 +46,7 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                             data=result,
                         )
                     except Exception as e:
+                        logging.exception("Server inner error occurred: ")
                         return ResponseModel(
                             requestId=data.get("requestId"),
                             code="500",
@@ -70,6 +76,7 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                             data=result,
                         )
                     except Exception as e:
+                        logging.exception("Server inner error occurred: ")
                         return ResponseModel(
                             requestId=data.get("requestId"),
                             code="500",
@@ -107,6 +114,7 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                         data=result,
                     )
                 except Exception as e:
+                    logging.exception("Server inner error occurred: ")
                     return ResponseModel(
                         requestId=requestId,
                         code="500",
