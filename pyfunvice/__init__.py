@@ -19,6 +19,37 @@ logging.basicConfig(
 )
 
 
+def app_service_get(path="/"):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(data: dict):
+            return await func(data)
+
+        @faas_router.get(path)
+        async def process_function(request: Request):
+            try:
+                data = dict(request.query_params)
+                result = await wrapper(data)
+                return ResponseModel(
+                    requestId=data.get("requestId"),
+                    code="200",
+                    message="success",
+                    data=result,
+                )
+            except Exception as e:
+                logging.exception("Server inner error occurred: ")
+                return ResponseModel(
+                    requestId=data.get("requestId"),
+                    code="500",
+                    message=str(e),
+                    data={},
+                )
+
+        return process_function
+
+    return decorator
+
+
 def app_service(path="/", body_type="raw", inparam_type="dict"):
     """
     path : str = "/",                       # http path
