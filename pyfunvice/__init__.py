@@ -5,12 +5,14 @@ from fastapi import APIRouter, FastAPI, File, Request, UploadFile
 from fastapi.params import Form
 from functools import wraps
 import inspect
-import aiofiles
 import logging
+import asyncio
+import threading
 
 from pyfunvice.common_func import delete_file
 from pyfunvice.struct import ResponseModel
 
+semaphore = None
 app = FastAPI()
 faas_router = APIRouter()
 
@@ -22,14 +24,14 @@ logging.basicConfig(
 def app_service_get(path="/"):
     def decorator(func):
         @wraps(func)
-        async def wrapper(data: dict):
-            return await func(data)
+        def wrapper(data: dict):
+            return asyncio.run(func(data))
 
         @faas_router.get(path)
-        async def process_function(request: Request):
+        def process_function(request: Request):
             try:
                 data = dict(request.query_params)
-                result = await wrapper(data)
+                result = wrapper(data)
                 return ResponseModel(
                     requestId=data.get("requestId"),
                     code="200",
@@ -62,14 +64,23 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
             if inparam_type == "dict":
 
                 @wraps(func)
-                async def wrapper(data: dict):
-                    return await func(data)
+                def wrapper(data: dict):
+                    return asyncio.run(func(data))
 
                 @faas_router.post(path)
-                async def process_function(request: Request):
+                def process_function(request: Request):
+                    semaphore_acquired = False
                     try:
-                        data = await request.json()
-                        result = await wrapper(data)
+                        data = asyncio.run(request.json())
+                        semaphore_acquired = semaphore.acquire(blocking=False)
+                        if not semaphore_acquired:
+                            return ResponseModel(
+                                requestId=data.get("requestId"),
+                                code="503",
+                                message="service is busy",
+                                data={},
+                            )
+                        result = wrapper(data)
                         return ResponseModel(
                             requestId=data.get("requestId"),
                             code="200",
@@ -84,22 +95,34 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                             message=str(e),
                             data={},
                         )
+                    finally:
+                        if semaphore_acquired:
+                            semaphore.release()
 
             elif inparam_type == "flat":
 
                 @wraps(func)
-                async def wrapper(*args, **kwargs):
-                    return await func(*args, **kwargs)
+                def wrapper(*args, **kwargs):
+                    return asyncio.run(func(*args, **kwargs))
 
                 signature = inspect.signature(func)
                 parameters = list(signature.parameters.values())
 
                 @faas_router.post(path)
-                async def process_function(request: Request):
+                def process_function(request: Request):
+                    semaphore_acquired = False
                     try:
-                        data = await request.json()
+                        data = asyncio.run(request.json())
+                        semaphore_acquired = semaphore.acquire(blocking=False)
+                        if not semaphore_acquired:
+                            return ResponseModel(
+                                requestId=data.get("requestId"),
+                                code="503",
+                                message="service is busy",
+                                data={},
+                            )
                         args = [data.get(param.name) for param in parameters]
-                        result = await wrapper(*args)
+                        result = wrapper(*args)
                         return ResponseModel(
                             requestId=data.get("requestId"),
                             code="200",
@@ -114,30 +137,42 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                             message=str(e),
                             data={},
                         )
+                    finally:
+                        if semaphore_acquired:
+                            semaphore.release()
             else:
                 pass
             return func
         elif body_type == "form-data":
 
             @wraps(func)
-            async def wrapper(file_name: str, file: UploadFile = File(...)):
-                async with aiofiles.open(file_name, "wb") as out_file:
-                    content = await file.read()
-                    await out_file.write(content)
-                result = await func(file_name)
+            def wrapper(file_name: str, file: UploadFile = File(...)):
+                with open(file_name, "wb") as out_file:
+                    content = asyncio.run(file.read())
+                    out_file.write(content)
+                result = asyncio.run(func(file_name))
                 delete_file(file_name)
                 return result
 
             @faas_router.post(path)
-            async def process_function(
+            def process_function(
                 file: UploadFile = File(...),
                 requestId: str = Form(None),
             ):
+                semaphore_acquired = False
                 try:
                     if not file:
                         raise Exception("file is empty")
                     file_name: str = requestId
-                    result = await wrapper(file_name, file)
+                    acquired = semaphore.acquire(blocking=False)
+                    if not acquired:
+                        return ResponseModel(
+                            requestId=requestId,
+                            code="503",
+                            message="service is busy",
+                            data={},
+                        )
+                    result = wrapper(file_name, file)
                     return ResponseModel(
                         requestId=requestId,
                         code="200",
@@ -152,6 +187,9 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                         message=str(e),
                         data={},
                     )
+                finally:
+                    if semaphore_acquired:
+                        semaphore.release()
         else:
             pass
         return func
@@ -178,7 +216,15 @@ class StandaloneApplication(BaseApplication):
         return self.application
 
 
-def start_app(port: int = 8000, workers: int = 1, post_fork_func: callable = None):
+def start_app(
+    port: int = 8000,
+    workers: int = 1,
+    max_concurrent: int = 1,
+    post_fork_func: callable = None,
+):
+    global semaphore
+    semaphore = threading.Semaphore(max_concurrent)
+
     app.include_router(faas_router)
 
     def post_fork(server: Arbiter, worker: Worker):
