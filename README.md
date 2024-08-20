@@ -11,16 +11,16 @@ pip install pyfunvice
 And a very simple example will be provided below
 
 ```python
-from pyfunvice import faas, faas_with_dict_req, start_faas
+from pyfunvice import app_service, faas_with_dict_req, start_app
 
-@faas(path="/api/v1/greet")
+@app_service(path="/api/v1/greet")
 async def v1_greet(data: dict) -> dict:
     name = data["name"]
     age = data["age"]
     return {"name": name, "age": age, "status": "success"}
 
 if __name__ == "__main__":
-    start_faas()
+    start_app()
 ```
 
 That's all, a HTTP service will be run and the default port is 8000 and the path is /api/v1/greet
@@ -28,29 +28,29 @@ That's all, a HTTP service will be run and the default port is 8000 and the path
 If you want to change the default port, you can add port parameter
 
 ```python
-from pyfunvice import faas, faas_with_dict_req, start_faas
+from pyfunvice import app_service, faas_with_dict_req, start_app
 
-@faas(path="/api/v1/greet")
+@app_service(path="/api/v1/greet")
 async def v1_greet(data: dict) -> dict:
     name = data["name"]
     age = data["age"]
     return {"name": name, "age": age, "status": "success"}
 
 if __name__ == "__main__":
-    start_faas(port=8080)
+    start_app(port=8080)
 ```
 
 And if you want to increase the number of workers, you can add workers parameter, it will run n worker processes in parallel
 
 ```python
-from pyfunvice import faas, faas_with_dict_req, start_faas
+from pyfunvice import app_service, faas_with_dict_req, start_app
 
-@faas(path="/api/v1/greet")
+@app_service(path="/api/v1/greet")
 async def v1_greet(data: dict) -> dict:
     name = data["name"]
     age = data["age"]
     return {"name": name, "age": age, "status": "success"}
 
 if __name__ == "__main__":
-    start_faas(port=8080, workers=2)
+    start_app(port=8080, workers=2)
 ```

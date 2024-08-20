@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyfunvice"
-version = "0.1.12"
+version = "0.1.13"
 description = ""
 authors = ["遥奕 <jibing.yjb@alibaba-inc.com>"]
 readme = "README.md"

@@ -164,8 +164,8 @@ def app_service(path="/", body_type="raw", inparam_type="dict"):
                     if not file:
                         raise Exception("file is empty")
                     file_name: str = requestId
-                    acquired = semaphore.acquire(blocking=False)
-                    if not acquired:
+                    semaphore_acquired = semaphore.acquire(blocking=False)
+                    if not semaphore_acquired:
                         return ResponseModel(
                             requestId=requestId,
                             code="503",
